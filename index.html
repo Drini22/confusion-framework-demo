@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Confusion framework — Cacaj 2025</title>
+<meta name="description" content="A concise mathematical definition of the Cacaj 2025 photobombing/contamination framework for direct imaging." />
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
+        onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\\\[',right:'\\\\]',display:true},{left:'\\\\(',right:'\\\\)',display:false}], throwOnError:false});"></script>
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Site nav -->
+<nav class="site-nav">
+  <a class="site-title" href="index.html">Confusion framework</a>
+  <div class="nav-right">
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark / light mode">
+      <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="hero-inner">
+    <p class="kicker">Cacaj 2025 · interactive companion</p>
+    <h1>A confusion framework for direct imaging</h1>
+    <p class="lede">
+      When a telescope's PSF is wide enough that two faint sources blur into one,
+      no algorithm can reliably separate them.  This framework turns that intuition
+      into a single sharp number — the <em>target confusion map</em> $\mathcal{D}$
+      — and makes the threshold computable for every PSF you'd actually use.
+    </p>
+    <p class="byline">
+      Drinor Cacaj — Cacaj et al.&nbsp;2025, <em>A confusion framework for direct imaging</em>.
+    </p>
+  </div>
+</header>
+
+<!-- Body -->
+<main class="prose-page">
+
+  <section>
+    <h2>The model</h2>
+    <p>
+      Fix a field of view $\Theta \subset \mathbb{R}^d$ and a unit-norm
+      shift-invariant PSF dictionary $\{U_\theta\}_{\theta \in \Theta}$.
+      A configuration of point sources is a finite set
+    </p>
+    $$ P \;=\; \{(p_i, F_i)\}_{i=1}^n, \qquad p_i \in \Theta, \ F_i > 0. $$
+    <p>
+      The detector mean is the flux-weighted superposition of shifted PSFs,
+    </p>
+    $$ \mu_P \;=\; \sum_{i=1}^n F_i\, U_{p_i}, $$
+    <p>
+      and the observed data is $\mu_P$ corrupted by additive Gaussian noise
+      with covariance $\Sigma$ (typically $\Sigma = \sigma^2 I$, per-pixel
+      detector noise).
+    </p>
+
+    <!-- Inline mini-demo: drag the sources, see mu_P and noisy data -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="model-fov"></canvas>
+          <div class="mini-demo-plot-label">Field of view&nbsp;&middot;&nbsp;drag $p_1$, $p_2$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="model-clean"></canvas>
+          <div class="mini-demo-plot-label">
+            Clean $\mu_P$
+            <button id="model-clean-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="model-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="model-new-noise" class="micro-btn" title="Draw a new random noise realisation">↻ new sample</button>
+            <button id="model-noisy-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$F_1$
+          <input type="range" id="model-F1" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="model-F1-val">1.00</span>
+        </label>
+        <label>$F_2$
+          <input type="range" id="model-F2" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="model-F2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="model-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="model-sigma-val">0.100</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The cost function</h2>
+    <p>
+      The natural cost between two configurations $P, Q$ is the squared
+      Mahalanobis distance between their means:
+    </p>
+    $$ J(P, Q) \;=\; \|\mu_P - \mu_Q\|_{\Sigma^{-1}}^2
+        \;=\; (\mu_P - \mu_Q)^\top \Sigma^{-1} (\mu_P - \mu_Q). $$
+    <p>
+      It is symmetric, non-negative, and zero only when $\mu_P = \mu_Q$.  Up
+      to an additive constant, $J$ is the symmetrised KL divergence between
+      the Gaussian likelihoods generated by $P$ and $Q$ — so a likelihood
+      ratio test on the data reduces exactly to a comparison of $J$ values.
+    </p>
+
+    <!-- Inline mini-demo:
+         Plot 1: mu_P (violet), two draggable sources p1, p2.
+         Plot 2: mu_Q (green), one draggable source q.
+         Plot 3: loss map J(P, {(q, F_Q)}) over q ranging in the FOV. -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="cost-P"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_P$ &middot; drag $p_1$, $p_2$
+            <button id="cost-P-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="cost-Q"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_Q$ &middot; drag $q$
+            <button id="cost-Q-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="cost-loss"></canvas>
+          <div class="mini-demo-plot-label">$J(P,\,Q_q)$ &middot; loss map</div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$F_{P_1}$
+          <input type="range" id="cost-FP1" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="cost-FP1-val">1.00</span>
+        </label>
+        <label>$F_{P_2}$
+          <input type="range" id="cost-FP2" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="cost-FP2-val">1.00</span>
+        </label>
+        <label>$F_Q$
+          <input type="range" id="cost-FQ" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="cost-FQ-val">1.00</span>
+        </label>
+      </div>
+      <div class="cost-readout">
+        <span class="readout-eq">$J(P, Q) \;=\;$</span>
+        <span class="readout-val" id="cost-J-val">0.000</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The best one-source explanation $Q^\star$</h2>
+    <p>
+      Let $\mathcal{Q}_1 = \{(q, F_q) : q \in \Theta,\ F_q \in \mathbb{R}_{\geq 0}\}$
+      be the set of single-source configurations.  The best one-source
+      explanation of $P$ is
+    </p>
+    $$ Q^\star \;=\; \arg\min_{Q \in \mathcal{Q}_1} J(P, Q). $$
+    <p>
+      For any fixed candidate position $q$, the optimal flux $F_q^\star$ is
+      analytic — it is the matched-filter coefficient
+      $F_q^\star = \langle U_q,\, \mu_P\rangle_{\Sigma^{-1}}$ — so the
+      $Q^\star$ search reduces to a 1D maximisation of
+      $f(q) = \langle U_q,\, \mu_P\rangle_{\Sigma^{-1}}^2$ over $q \in \Theta$.
+    </p>
+
+    <!-- Inline mini-demo:
+         Plot 1: mu_P (grayscale), drag p_1, p_2.
+         Plot 2: mu_Q with F_q* auto from matched-filter, drag q.
+         Plot 3: profiled loss map J*(P, q); green dot = user's q,
+                 yellow star = Q* (argmin). -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="qstar-P"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_P$ &middot; drag $p_1$, $p_2$
+            <button id="qstar-P-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="qstar-Q"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_{Q_q}$ &middot; drag $q$, $F_Q$ auto
+            <button id="qstar-Q-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="qstar-loss"></canvas>
+          <div class="mini-demo-plot-label">$J(P, q)$ &middot; loss map</div>
+        </div>
+      </div>
+      <div class="mini-demo-controls two-col">
+        <label>$F_{P_1}$
+          <input type="range" id="qstar-FP1" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="qstar-FP1-val">1.00</span>
+        </label>
+        <label>$F_{P_2}$
+          <input type="range" id="qstar-FP2" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="qstar-FP2-val">1.00</span>
+        </label>
+      </div>
+      <div class="cost-readout cost-readout-double">
+        <div>
+          <span class="readout-eq">$F_Q \;=\;$</span>
+          <span class="readout-val" id="qstar-Fq-val">0.000</span>
+        </div>
+        <div>
+          <span class="readout-val readout-val-min" id="qstar-Jmin-val">0.000</span>
+          <span class="readout-eq">$\;\leq\; J(P, Q) \;=\;$</span>
+          <span class="readout-val" id="qstar-J-val">0.000</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>A parsimony cost for model selection (AIC)</h2>
+    <p>
+      Comparing models of different cardinality requires a
+      <em>parsimony</em> cost.  The <em>total cost</em> of a candidate
+      model $Q$ is
+    </p>
+    $$ J_{\mathrm{tot}}(P, Q) \;=\; J(P, Q) \;+\; \xi(|Q|), $$
+    <p>
+      with $\xi : \mathbb{Z}_{\geq 0} \to \mathbb{R}_{\geq 0}$ strictly
+      increasing and $\xi(0) = 0$.  Under the AIC scaling
+      $\xi(N) = N \eta_{\mathrm{SNR}}^2$, adding any single source costs
+      the fixed penalty
+    </p>
+    $$ \eta_{\mathrm{SNR}}^2 \;:=\; \xi(N + 1) - \xi(N), $$
+    <p>
+      and $\eta_{\mathrm{SNR}}$ becomes both the detection threshold
+      (below which a configuration is undetectable) and the
+      indistinguishability tolerance.
+    </p>
+    <p>
+      The natural unit is the framework's signal-to-noise ratio,
+      defined as the squared Mahalanobis norm of the noiseless signal:
+    </p>
+    $$ \mathrm{SNR}(P)^2 \;:=\; J(P, \emptyset, \Sigma)
+        \;=\; \mu_P^\top \Sigma^{-1} \mu_P. $$
+    <p>
+      For a unit-norm $U_p$ in white noise, this reduces to
+      $\mathrm{SNR}(P) = F/\sigma_{\hat F}$ where $\sigma_{\hat F}$ is the
+      matched-filter retrieval std on a single source — flux divided by
+      the noise on the retrieved flux.  The dimensionless ratio
+    </p>
+    $$ R \;:=\; \mathrm{SNR}(P)\,/\,\eta_{\mathrm{SNR}} $$
+    <p>
+      lets us read off detectability at a glance: at $R \geq 1$ the
+      configuration is bright enough to clear the threshold.
+    </p>
+    <h3>Calibrating $\eta_{\mathrm{SNR}}$</h3>
+    <p>
+      The threshold is fixed by requiring that noise alone fail to
+      support a single-source model at the 5σ level (Dannert et al.
+      2022, Cacaj et al. 2025 §2.2.3):
+    </p>
+    $$ \mathbb{P}\!\left[\,\mathrm{S/N}\bigl(Q_1^\star(X), \Sigma\bigr)
+        \,>\, \eta_{\mathrm{SNR}}\,\right] \;=\; \Phi(5)
+        \;\approx\; 1 - 5.7\!\times\!10^{-7}, $$
+    <p>
+      with $X \sim \mathcal{N}(0, \Sigma)$ pure noise and
+      $Q_1^\star(X) = \arg\min_{|Q|=1} J(Q, X, \Sigma)$ the best
+      matched-filter fit.  Naively one might expect
+      $\eta_{\mathrm{SNR}} = 5$ &mdash; that's the 5σ tail of any
+      <em>single</em> matched filter.  But $Q_1^\star$ is the
+      <em>maximum</em> over a continuum of positions $q$ in the FOV;
+      taking a maximum over correlated Gaussian samples shifts the
+      bulk of the distribution upward (the &ldquo;look-elsewhere effect&rdquo;
+      in particle physics).  So $\eta_{\mathrm{SNR}}$ deviates from 5,
+      by an amount that depends on the FOV size, the PSF correlation
+      length, and the parametric Gaussian-fit approximation used to
+      extrapolate the tail.
+    </p>
+    <p>
+      The threshold is computed numerically: simulate many noise-only
+      data, find $Q_1^\star$ for each, build the histogram of the
+      maximum matched-filter $\mathrm{S/N}$, fit a Gaussian, and read off
+      the 5σ point of the fit ($\eta_{\mathrm{SNR}} = \mu_{\mathrm{fit}}
+      + 5\sigma_{\mathrm{fit}}$).  The next demo illustrates this for
+      the 2D Gaussian PSF used by the early demos on this page; in the
+      $\delta_1$-for-an-aperture-telescope demo below, the same MC is
+      run once per aperture and the resulting $\eta_{\mathrm{SNR}}$
+      drives plot 9's region classification.
+    </p>
+
+    <!-- Inline mini-demo:
+         Plot 1 (1 col): a noise-only sample on the detector grid.
+         Plot 2 (2 cols wide): histogram of max(S/N) over many MC
+         noise-only Q* fits, with a Gaussian fit overlay and a vertical
+         line at μ + 5σ; the η_SNR value is reported numerically. -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots aic-plots">
+        <div class="mini-demo-plot">
+          <canvas id="aic-noise"></canvas>
+          <div class="mini-demo-plot-label">
+            Pure-noise sample
+            <button id="aic-new-noise" class="micro-btn"
+                    title="Draw a new noise realisation">↻ new sample</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="aic-fit"></canvas>
+          <div class="mini-demo-plot-label">
+            Best-fit single source $\hat F\,U(\mathbf{x}-q^\star)$
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="aic-hist"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mathrm{S/N}\bigl(Q_1^\star(X)\bigr)$ histogram &middot;
+            Gaussian fit &middot; 5σ line
+          </div>
+        </div>
+      </div>
+      <div class="cost-readout">
+        <span class="readout-eq">$\eta_{\mathrm{SNR}} \;=\;$</span>
+        <span class="readout-val" id="aic-eta-val">— </span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Three conditions for contamination</h2>
+    <p>
+      A two-source configuration $P = \{p_1, p_2\}$ is
+      <em>contaminating</em> when the matched-filter $Q^\star$ wins the
+      total-cost contest against $\emptyset$, $\{p_1\}$, $\{p_2\}$ and the
+      truth $P$ itself.  Three necessary-and-sufficient conditions
+      (Cacaj&nbsp;2025 Eqs.&nbsp;7&ndash;9, with $\alpha = \beta = 1$)
+      decompose this requirement, with $\eta$ playing the role of
+      $\eta_{\mathrm{SNR}}$ from the previous section:
+    </p>
+    <ol class="enum-tight">
+      <li>
+        <strong>Detect.</strong>
+        $J(P, \emptyset) - J(P, Q^\star) > \eta^2$ &mdash; the data is
+        far enough from "no source" to detect <em>something</em>.
+      </li>
+      <li>
+        <strong>Resolve fails.</strong>
+        $J(P, Q^\star) > \eta^2$ &mdash; the single-source fit $Q^\star$
+        does not reach the data within tolerance, so the data <em>cannot</em>
+        be explained by one source alone.
+      </li>
+      <li>
+        <strong>Contaminate.</strong>
+        $\displaystyle \min_{P_s \in \{\emptyset, p_1, p_2\}} J(P_s, Q^\star) > \eta^2$
+        &mdash; even the simplest competitors ($\emptyset$, the brighter
+        source, the fainter source) sit further from $Q^\star$ than
+        $\eta^2$, so the phantom $Q^\star$ wins out.
+      </li>
+    </ol>
+
+    <!-- Inline mini-demo:
+         Plot 1: mu_P (grayscale) — drag p1, p2.
+         Plot 2: pixelated + noise (grayscale, with cached realisation).
+         Plot 3: region classification in (Delta, R) plane, eta = 5 sigma.
+                 Yellow dot at the user's current configuration. -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="contam-P"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_P$ &middot; drag $p_1$, $p_2$
+            <button id="contam-P-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="contam-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="contam-new-noise" class="micro-btn"
+                    title="Draw a new random noise realisation">↻ new sample</button>
+            <button id="contam-noisy-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="contam-class"></canvas>
+          <div class="mini-demo-plot-label" id="contam-class-label">
+            Region classification &middot; $R = \mathrm{SNR}(P)/\eta_{\mathrm{SNR}}$,
+            $\eta_{\mathrm{SNR}} = $<span id="contam-class-eta">5.00</span>
+          </div>
+        </div>
+      </div>
+      <div class="region-legend" aria-label="Region classification legend">
+        <span class="region-legend-item">
+          <span class="region-swatch region-swatch-grey"></span>no detection
+        </span>
+        <span class="region-legend-item">
+          <span class="region-swatch region-swatch-blue"></span>single source $\{p_1\}$ or $\{p_2\}$
+        </span>
+        <span class="region-legend-item">
+          <span class="region-swatch region-swatch-red"></span>phantom $Q^\star$ &middot; contamination
+        </span>
+        <span class="region-legend-item">
+          <span class="region-swatch region-swatch-green"></span>resolved $P = \{p_1, p_2\}$
+        </span>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$F_{P_1}$
+          <input type="range" id="contam-FP1" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="contam-FP1-val">1.00</span>
+        </label>
+        <label>$F_{P_2}$
+          <input type="range" id="contam-FP2" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="contam-FP2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="contam-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="contam-sigma-val">0.100</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The target confusion map</h2>
+    <p>
+      Conditions (1)&ndash;(3) collapse into the sign of a single
+      noise-independent quantity:
+    </p>
+    $$ \mathcal{D}(P) \;=\;
+        \min_{P_s \in \{\emptyset,\, p_1,\, p_2\}} J(P_s, Q^\star)
+        \;-\; J(P, Q^\star). $$
+    <p>
+      The sign reads off contamination at every noise level:
+    </p>
+    <ul class="enum-tight">
+      <li>
+        $\mathcal{D}(P) > 0$ &mdash; the geometry admits a phantom $Q^\star$
+        that beats every simpler hypothesis.  Contamination is geometrically
+        possible: for low enough noise the data <em>will</em> prefer the
+        phantom over the truth.
+      </li>
+      <li>
+        $\mathcal{D}(P) < 0$ &mdash; no such phantom exists; contamination
+        is ruled out at every noise level.
+      </li>
+    </ul>
+    <p>
+      Normalising by source intensities,
+    </p>
+    $$ \bar{\mathcal{D}}(P) \;=\; \frac{\mathcal{D}(P)}{2 J_1}
+        \;+\; \frac{\mathcal{D}(P)}{2 J_2}, \qquad J_i = F_i^2, $$
+    <p>
+      gives a flux-scale-invariant diagnostic that lies in $[-1, 1]$ for
+      the smooth PSF dictionaries of physical interest.
+    </p>
+
+    <!-- Inline mini-demo:
+         Plot 1: mu_P (grayscale), drag p1, p2.
+         Plot 2: pixelated + noise (cached realisation).
+         Plot 3: D versus Delta = ||p2 - p1||, colour-segmented by sign,
+                 yellow line at Delta_c (zero crossing), white line at
+                 the user's current Delta. -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="target-P"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_P$ &middot; drag $p_1$, $p_2$
+            <button id="target-P-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="target-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="target-new-noise" class="micro-btn"
+                    title="Draw a new random noise realisation">↻ new sample</button>
+            <button id="target-noisy-log" class="micro-btn" title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="target-D"></canvas>
+          <div class="mini-demo-plot-label">$\bar{\mathcal{D}}$ vs $\Delta = \|p_2 - p_1\|$</div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$F_{P_1}$
+          <input type="range" id="target-FP1" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="target-FP1-val">1.00</span>
+        </label>
+        <label>$F_{P_2}$
+          <input type="range" id="target-FP2" min="0" max="2" step="0.01" value="1">
+          <span class="val" id="target-FP2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="target-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="target-sigma-val">0.100</span>
+        </label>
+      </div>
+      <div class="verdict-box" id="target-verdict">
+        <span class="verdict-icon" aria-hidden="true"></span>
+        <span class="verdict-text">No contamination at any noise level.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>When is $\bar{\mathcal{D}}$ bounded?</h2>
+    <p>
+      The bound $|\bar{\mathcal{D}}| \leq 1$ is not automatic &mdash; it
+      can fail for pathological discrete dictionaries.  A clean sufficient
+      condition is the <em>finite-correlation condition</em>: with
+      $c_i = \langle U_{q^\star}, U_{p_i}\rangle$,
+      $r = \langle U_{p_1}, U_{p_2}\rangle$, and the convention $F_1 \geq F_2$,
+    </p>
+    $$ F_1\,(c_1 c_2 - r) \;\leq\; F_2\,(1 - c_2^2). \tag{FCC} $$
+    <p>
+      Whenever (FCC) holds, $|\mathcal{D}(P)| \leq \min(J_1, J_2)$ and
+      $\bar{\mathcal{D}}(P) \in [-1, 1]$.  For the isotropic Gaussian PSF
+      in any dimension, (FCC) is satisfied <em>unconditionally</em>.  That
+      is the case the example below makes interactive, with the full proof.
+    </p>
+  </section>
+
+  <section>
+    <h2>The spatial resolution $\delta_1$</h2>
+    <p>
+      $\mathcal{D}$ classifies one configuration at a time.  To turn the
+      framework into a single number that characterises an instrument, fix
+      a source $p_1$ and let a companion source $p_2$ sweep the field of
+      view with fixed flux $F_2$.  The configurations that contaminate
+      $p_1$ form the <em>contamination set</em>
+    </p>
+    $$ \mathcal{C}(p_1, F_2, \Sigma) \;:=\;
+        \bigl\{\, p_2 \in \Theta \;:\; \mathcal{D}(\{p_1, p_2\}, \Sigma) > 0 \,\bigr\}. $$
+    <p>
+      Its area, normalised so that a disk has area equal to its radius
+      squared, defines the <em>confusion area</em>; its square root is the
+      <em>$\delta_1$ resolution length</em>:
+    </p>
+    $$ \rho(p_1, F_2, \Sigma) \;:=\;
+        \frac{1}{\pi}\!\iint_{\Theta} \mathbb{1}\{p_2 \in \mathcal{C}\}\;
+        \mathrm{d}^2 p_2, \qquad
+        \delta_1 \;:=\; \sqrt{\rho}. $$
+    <p>
+      The $1/\pi$ normalisation is chosen so that whenever the
+      contamination set is a disk of radius $r$ around $p_1$, $\delta_1 = r$
+      exactly.  This is the regime of every isotropic monotone radial PSF:
+      the dimension-independence theorem then collapses $\delta_1$ to the
+      1D critical separation $\Delta_c$ along the segment $[p_1, p_2]$.
+    </p>
+  </section>
+
+  <section>
+    <h2>$\delta_1$ for an aperture telescope</h2>
+    <p>
+      For a circular pupil of diameter $d$ at wavelength $\lambda$, the unit
+      response is the 2D Airy disk
+    </p>
+    $$ U(\theta) \;\propto\; \biggl[\frac{2 J_1(\pi\, \rho_r\, d/\lambda)}
+        {\pi\, \rho_r\, d/\lambda}\biggr]^2,
+        \qquad \rho_r = \|\theta - \theta_p\|, $$
+    <p>
+      where $J_1$ is the Bessel function of the first kind of order one and
+      the first zero $\pi\, \rho_r\, d/\lambda = 3.8317$ defines the
+      Rayleigh angle $\delta_{\mathrm{Rayleigh}} \approx 1.22\,\lambda/d$.
+      The Airy PSF is isotropic but <em>not</em> monotone radial — the
+      Bessel sidelobes break the monotonicity assumption used in the
+      Gaussian dimension-independence proof.  Below, the contamination map
+      $\bar{\mathcal{D}}$ and the resolution $\delta_1$ are read directly off
+      a 2D sweep of $p_2$ over the field of view.
+    </p>
+
+    <!-- Inline mini-demo: aperture palette on top, two rows of three plots,
+         sliders + readout below.
+         Row 1: FOV (drag p_1, p_2)  ·  aperture slot  ·  pixelated + noise.
+         Row 2: clean mu_P  ·  D-bar map over p_2 ∈ FOV  ·  D-bar(δ, ratio). -->
+    <div class="mini-demo">
+      <div class="aperture-palette">
+        <span class="aperture-palette-label">Aperture &middot; click a tile to apply</span>
+        <button class="aperture-tile" type="button" data-aperture="disk">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Disk</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="annulus">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Annulus</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="square">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Square</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="hexagon">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Hexagon</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="star6">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">6-star</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="slot2">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Double slit</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="slot1">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Single slit</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="disk4">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">4-disk array</div>
+        </button>
+        <button class="aperture-tile" type="button" data-aperture="hubble">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Hubble</div>
+        </button>
+      </div>
+
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="airy-fov"></canvas>
+          <div class="mini-demo-plot-label">FOV &middot; drag $p_1$, $p_2$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="airy-slot" class="aperture-slot"></canvas>
+          <div class="mini-demo-plot-label">Active aperture &middot; pupil mask</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="airy-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="airy-new-noise" class="micro-btn"
+                    title="Draw a new random noise realisation">↻ new sample</button>
+            <button id="airy-noisy-log" class="micro-btn"
+                    title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="airy-P"></canvas>
+          <div class="mini-demo-plot-label">
+            $\mu_P$ &middot; drag $p_1$, $p_2$
+            <button id="airy-P-log" class="micro-btn"
+                    title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="airy-Dmap"></canvas>
+          <div class="mini-demo-plot-label">
+            $\bar{\mathcal{D}}(\{p_1, p_2(x,y)\})$ &middot; red contour: $\bar{\mathcal{D}} = 0$
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="airy-Dratio"></canvas>
+          <div class="mini-demo-plot-label">
+            $\bar{\mathcal{D}}(\delta,\ F_{P_1}/F_{P_2})$ &middot; along source axis
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="airy-best"></canvas>
+          <div class="mini-demo-plot-label">
+            $\hat{\mu}$ &middot; best matched-filter fit on current noisy image
+            <button id="airy-best-log" class="micro-btn"
+                    title="Toggle logarithmic display">log</button>
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="airy-flux"></canvas>
+          <div class="mini-demo-plot-label">
+            Retrieved $\hat{F}_1$, $\hat{F}_2$ &middot; mean $\pm 3\sigma$ over $N=200$ samples
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="airy-class"></canvas>
+          <div class="mini-demo-plot-label" id="airy-class-label">
+            Region classification &middot; $R = \mathrm{SNR}(P)/\eta_{\mathrm{SNR}}$,
+            $\eta_{\mathrm{SNR}} = $<span id="airy-class-eta">5.00</span>
+            (<span id="airy-class-apname">disk</span>)
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-demo-controls">
+        <label>$F_{P_1}$
+          <input type="range" id="airy-FP1" min="0.05" max="2" step="0.01" value="0.7">
+          <span class="val" id="airy-FP1-val">0.70</span>
+        </label>
+        <label>$F_{P_2}$
+          <input type="range" id="airy-FP2" min="0.05" max="2" step="0.01" value="1">
+          <span class="val" id="airy-FP2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="airy-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="airy-sigma-val">0.100</span>
+        </label>
+        <label>$\theta$
+          <input type="range" id="airy-theta" min="0" max="360" step="1" value="0">
+          <span class="val" id="airy-theta-val">0°</span>
+        </label>
+      </div>
+      <div class="cost-readout">
+        <span class="readout-eq">$\delta_C \,=\, \sqrt{\tfrac{1}{\pi}\,\mathrm{area}\{\bar{\mathcal{D}}>0\}} \;\approx\;$</span>
+        <span class="readout-val" id="airy-deltaC-val">— </span>
+      </div>
+    </div>
+    <p>
+      The red contour in the right-hand plot is the function
+      $\delta_C(F_{P_1}/F_{P_2})$ — the smallest separation at which
+      $\bar{\mathcal{D}}$ first changes sign.  At equal flux it lands at
+    </p>
+    $$ \delta_1 \;=\; \delta_C \;\approx\; 0.952\,\delta_{\mathrm{Rayleigh}}
+        \;\approx\; 1.16\,\frac{\lambda}{d}, $$
+    <p>
+      slightly tighter than the Rayleigh convention $1.22\,\lambda/d$.  The
+      constant $0.952$ is obtained by Monte Carlo integration of
+      $\mathbf{1}\{\mathcal{D} > 0\}$ over $\theta_{p_2}$ in the FOV (≤ 1%
+      relative error after ~10 iterations; Cacaj et al. 2025, App. C).  No
+      closed-form expression for $0.952$ is known.  Bracketed below by the
+      Duval–Peyré empirical two-spike threshold $0.5$–$0.7\,\lambda/d$ and
+      above by the Candès–Fernandez-Granda sufficient bound
+      $1.87\,\lambda/d$, the value is order-optimal in a precise sense
+      (Cacaj 2025, Theorem on order optimality).
+    </p>
+  </section>
+
+  <!-- Examples -->
+  <section class="examples">
+    <h2>Examples</h2>
+    <p>
+      Each example below specialises the framework to a specific PSF
+      dictionary and lets you push the configuration around to feel where
+      $\mathcal{D}$ flips sign.
+    </p>
+    <div class="example-grid">
+      <a class="example-card" href="gaussian-2d.html">
+        <div class="example-card-title">2D Gaussian PSF dictionary</div>
+        <div class="example-card-sub">
+          Drag two sources, watch contamination flip on and off, and read
+          the dimension-independent proof that
+          $\delta_1 = \Delta_c \approx 2.84\,\sigma$ for the Gaussian.
+        </div>
+        <div class="example-card-link">Open demo →</div>
+      </a>
+      <div class="example-card disabled">
+        <div class="example-card-title">2D Airy disk</div>
+        <div class="example-card-sub">Coming soon.</div>
+        <div class="example-card-link">&nbsp;</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Drinor Cacaj et al.&nbsp;2025, <em>A confusion framework for direct imaging</em>.
+  </p>
+  <p class="cite">
+    Theory: <code>paper/theory.tex</code> &middot;
+    Code: <code>src/gaussian_demo.c</code> &middot;
+    Numerical verification: <code>paper/verification/verify_threshold_table.py</code>
+  </p>
+</footer>
+
+<script src="examples-model.js"></script>
+<script src="examples-cost.js"></script>
+<script src="examples-qstar.js"></script>
+<script src="examples-aic.js"></script>
+<script src="examples-contam.js"></script>
+<script src="examples-target.js"></script>
+<script src="fft.js"></script>
+<script src="apertures.js"></script>
+<script src="examples-airy.js"></script>
+<script src="theme.js"></script>
+
+</body>
+</html>
