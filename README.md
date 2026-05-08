@@ -73,11 +73,12 @@ over `file://`).
 
 If you use the framework, please cite:
 
-> Cacaj, D., Angerhausen, D., Navarro, P., Laugier, R., Kammerer, J.,
+> Cacaj, D., Angerhausen, D., Saxena, P., Laugier, R., Kammerer, J.,
 > Alei, E., Quanz, S. P. *Photobombing for the Large Interferometer For
 > Exoplanets (LIFE): A New Criterion for Target Confusion and
 > Application to a Mid-infrared Rotating Nulling Interferometer*.
-> The Astronomical Journal, **169**, 244 (May 2025).
+> The Astronomical Journal, **169**, 244 (18 pp.), May 2025.
+> [doi:10.3847/1538-3881/adbefc](https://doi.org/10.3847/1538-3881/adbefc)
 
 ## License
 
