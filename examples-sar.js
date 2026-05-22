@@ -57,6 +57,16 @@ const cv = {
   wf_psf:  document.getElementById('sar-wf-psf'),
   az_ap:   document.getElementById('sar-az-aperture'),
   az_psf:  document.getElementById('sar-az-psf'),
+  az_2d:   document.getElementById('sar-az-2dpsf'),
+  /* inline section-1 demo: drag two targets, see μ_P + noisy */
+  model_fov:   document.getElementById('sar-model-fov'),
+  model_clean: document.getElementById('sar-model-clean'),
+  model_noisy: document.getElementById('sar-model-noisy'),
+  /* inline section-5 demo: pair demo */
+  pair_fov:   document.getElementById('sar-pair-fov'),
+  pair_clean: document.getElementById('sar-pair-clean'),
+  pair_noisy: document.getElementById('sar-pair-noisy'),
+  /* big demo */
   fov:     document.getElementById('sar-fov'),
   psf2d:   document.getElementById('sar-psf2d'),
   noisy:   document.getElementById('sar-noisy'),
@@ -360,7 +370,7 @@ if (wfSelect) wfSelect.addEventListener('change', () => {
   currentWaveform = saved; rebuild_range_psf();
 });
 
-/* Cross-range aperture inline demo */
+/* Cross-range aperture inline demo (3 plots: aperture + 1D PSF + 2D U_p) */
 function refresh_az_demos() {
   const L = S.Lsyn;
   draw_curve(cv.az_ap,
@@ -371,6 +381,22 @@ function refresh_az_demos() {
                     if (Math.abs(z) < 1e-6) return 1;
                     return Math.abs(Math.sin(z) / z); },
              [-3, 3], [-0.3, 1.1], 'rgb(80, 180, 220)', {xlabel: 'x (cells at L_ref)'});
+  /* 2D PSF: U_p(r, x) = h_r(r) · h_x(x) centered, peak = 1. */
+  if (cv.az_2d) {
+    const sz = 80;
+    const buf = new Float64Array(sz * sz);
+    let pk = 1e-9;
+    for (let i = 0; i < sz; i++) {
+      const x = +2.0 - (i + 0.5)/sz * 4.0;
+      for (let j = 0; j < sz; j++) {
+        const r = -2.0 + (j + 0.5)/sz * 4.0;
+        const v = Math.max(0, U_at(r, x));
+        buf[i * sz + j] = v;
+        if (v > pk) pk = v;
+      }
+    }
+    draw_grayscale(cv.az_2d, buf, sz, pk);
+  }
 }
 refresh_az_demos();
 const lsynSlider = document.getElementById('sar-Lsyn');
@@ -379,6 +405,172 @@ if (lsynSlider) lsynSlider.addEventListener('input', () => {
   S.Lsyn = parseFloat(lsynSlider.value);
   if (lsynLabel) lsynLabel.textContent = S.Lsyn.toFixed(2);
   refresh_az_demos();
+});
+
+/* ===========================================================================
+ * Inline two-target mini-demos (sections 1 and 5).
+ *
+ * Each demo has its own state, its own noise pattern, its own draggable
+ * sources.  Reuses the global U_at / k_at PSF lookups so it always
+ * reflects the *currently selected waveform* from the big demo's
+ * palette.  This keeps the inline demos consistent with the rest of
+ * the page without duplicating PSF code.
+ * =========================================================================== */
+
+function make_inline_pair_demo(opts) {
+  /* opts = { stateKey: 'sar-model' | 'sar-pair', defaultA1, defaultA2, cv: {fov, clean, noisy} } */
+  const local = {
+    P1r: opts.P1r0, P1x: opts.P1x0,
+    P2r: opts.P2r0, P2x: opts.P2x0,
+    A1: opts.defaultA1, A2: opts.defaultA2,
+    sigma: 0.10,
+  };
+  const PI_FINE_INL = 120;
+  const PI_PIX_INL  = 18;
+  const FOV_INL     = 2.5;
+  const muFine = new Float64Array(PI_FINE_INL * PI_FINE_INL);
+  const muPix  = new Float64Array(PI_PIX_INL  * PI_PIX_INL);
+  const noiseSamp = new Float64Array(PI_PIX_INL * PI_PIX_INL);
+  let noiseInit = false;
+  let drag = null, pressed = false, held = false;
+
+  function ensureNoise() {
+    if (noiseInit) return;
+    for (let i = 0; i < noiseSamp.length; i++) noiseSamp[i] = gauss_rng();
+    noiseInit = true;
+  }
+  function recompute() {
+    let pk = 1e-9;
+    for (let i = 0; i < PI_FINE_INL; i++) {
+      const x = +FOV_INL - (i + 0.5)/PI_FINE_INL * 2*FOV_INL;
+      for (let j = 0; j < PI_FINE_INL; j++) {
+        const r = -FOV_INL + (j + 0.5)/PI_FINE_INL * 2*FOV_INL;
+        const v = local.A1 * U_at(r - local.P1r, x - local.P1x) +
+                  local.A2 * U_at(r - local.P2r, x - local.P2x);
+        muFine[i * PI_FINE_INL + j] = v;
+        if (v > pk) pk = v;
+      }
+    }
+    /* Block-average to detector grid */
+    const block = (PI_FINE_INL / PI_PIX_INL) | 0;
+    const inv_b2 = 1 / (block * block);
+    for (let pi = 0; pi < PI_PIX_INL; pi++) {
+      for (let pj = 0; pj < PI_PIX_INL; pj++) {
+        let s = 0;
+        for (let di = 0; di < block; di++) {
+          const rowOff = (pi * block + di) * PI_FINE_INL;
+          for (let dj = 0; dj < block; dj++) s += muFine[rowOff + pj*block + dj];
+        }
+        muPix[pi * PI_PIX_INL + pj] = s * inv_b2;
+      }
+    }
+    return pk;
+  }
+  function draw_fov() {
+    if (!opts.cv.fov) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = opts.cv.fov.clientWidth, cssH = opts.cv.fov.clientHeight;
+    const cw = Math.round(cssW*dpr), ch = Math.round(cssH*dpr);
+    if (opts.cv.fov.width !== cw || opts.cv.fov.height !== ch) { opts.cv.fov.width = cw; opts.cv.fov.height = ch; }
+    const ctx = opts.cv.fov.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = getCSSColor('--canvas-bg');
+    ctx.fillRect(0, 0, cw, ch);
+    const sz = Math.min(cw, ch);
+    const x0 = ((cw - sz)/2)|0, y0 = ((ch - sz)/2)|0;
+    ctx.strokeStyle = getCSSColor('--canvas-axis');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x0 + sz/2, y0); ctx.lineTo(x0 + sz/2, y0 + sz);
+    ctx.moveTo(x0, y0 + sz/2); ctx.lineTo(x0 + sz, y0 + sz/2);
+    ctx.stroke();
+    ctx.strokeStyle = getCSSColor('--border');
+    ctx.strokeRect(x0, y0, sz, sz);
+    /* Draw + drag sources */
+    function dot(srcR, srcX, key, color) {
+      const xs = x0 + (srcR + FOV_INL) / (2*FOV_INL) * sz;
+      const ys = y0 + sz - (srcX + FOV_INL) / (2*FOV_INL) * sz;
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(xs, ys, 5*dpr, 0, 2*Math.PI); ctx.fill();
+      const mp = opts.cv.fov._mp;
+      if (mp) {
+        const mx = mp.x * dpr, my = mp.y * dpr;
+        const d2 = (mx-xs)**2 + (my-ys)**2;
+        const near = d2 < (10*dpr)**2;
+        if (pressed && !drag && near) drag = key;
+        if (held && drag === key) {
+          const newR = (mx - x0)/sz * 2*FOV_INL - FOV_INL;
+          const newX = FOV_INL - (my - y0)/sz * 2*FOV_INL;
+          local[key + 'r'] = Math.max(-FOV_INL, Math.min(FOV_INL, newR));
+          local[key + 'x'] = Math.max(-FOV_INL, Math.min(FOV_INL, newX));
+          opts.cv.fov.style.cursor = 'move';
+        } else if (near) opts.cv.fov.style.cursor = 'move';
+        else opts.cv.fov.style.cursor = 'default';
+      }
+    }
+    dot(local.P1r, local.P1x, 'P1', 'rgb(220, 80, 80)');
+    dot(local.P2r, local.P2x, 'P2', 'rgb(80, 130, 220)');
+  }
+  /* Mouse hooks for the FOV canvas */
+  if (opts.cv.fov) {
+    opts.cv.fov.addEventListener('mousemove', e => {
+      const r = opts.cv.fov.getBoundingClientRect();
+      opts.cv.fov._mp = { x: e.clientX - r.left, y: e.clientY - r.top };
+    });
+    opts.cv.fov.addEventListener('mouseleave', () => { opts.cv.fov._mp = null; });
+    opts.cv.fov.addEventListener('mousedown', () => { pressed = true; held = true; });
+    opts.cv.fov.addEventListener('mouseup',   () => { pressed = false; held = false; drag = null; });
+  }
+  /* Slider wiring */
+  function bind(id, valId, key, dec=2) {
+    const sl = document.getElementById(id), vl = document.getElementById(valId);
+    if (!sl) return;
+    sl.addEventListener('input', () => {
+      local[key] = parseFloat(sl.value);
+      if (vl) vl.textContent = local[key].toFixed(dec);
+    });
+    if (vl) vl.textContent = local[key].toFixed(dec);
+  }
+  bind(opts.stateKey + '-A1', opts.stateKey + '-A1-val', 'A1');
+  bind(opts.stateKey + '-A2', opts.stateKey + '-A2-val', 'A2');
+  bind(opts.stateKey + '-sigma', opts.stateKey + '-sigma-val', 'sigma', 3);
+  const newNoiseBtn = document.getElementById(opts.stateKey + '-new-noise');
+  if (newNoiseBtn) newNoiseBtn.addEventListener('click', () => {
+    for (let i = 0; i < noiseSamp.length; i++) noiseSamp[i] = gauss_rng();
+  });
+  /* Main loop entry */
+  function tick() {
+    const pk = recompute();
+    draw_fov();
+    draw_grayscale(opts.cv.clean, muFine, PI_FINE_INL, pk);
+    ensureNoise();
+    const buf = new Float64Array(PI_PIX_INL * PI_PIX_INL);
+    let pkN = 1e-9;
+    for (let p = 0; p < buf.length; p++) {
+      const v = muPix[p] + local.sigma * noiseSamp[p];
+      buf[p] = Math.max(0, v);
+      if (buf[p] > pkN) pkN = buf[p];
+    }
+    draw_grayscale(opts.cv.noisy, buf, PI_PIX_INL, pkN);
+  }
+  return tick;
+}
+
+/* Section-1 demo: one off-axis pair at moderate separation */
+const tick_model_demo = make_inline_pair_demo({
+  stateKey: 'sar-model',
+  P1r0: -0.9, P1x0: 0.0,
+  P2r0: +0.9, P2x0: 0.0,
+  defaultA1: 1.0, defaultA2: 1.0,
+  cv: { fov: cv.model_fov, clean: cv.model_clean, noisy: cv.model_noisy },
+});
+
+/* Section-5 demo: a closer pair to show merging */
+const tick_pair_demo = make_inline_pair_demo({
+  stateKey: 'sar-pair',
+  P1r0: -0.50, P1x0: 0.0,
+  P2r0: +0.50, P2x0: 0.0,
+  defaultA1: 0.7, defaultA2: 1.0,
+  cv: { fov: cv.pair_fov, clean: cv.pair_clean, noisy: cv.pair_noisy },
 });
 
 /* ---- BIG INTERACTIVE DEMO --------------------------------------------- */
@@ -1148,6 +1340,7 @@ function setup_palette() {
       rebuild_range_psf();
       compute_eta();
       update_class_label();
+      refresh_az_demos();      /* update section-3 2D PSF panel */
       dmapDirty = true; dratioDirty = true;
       refreshActive();
     });
@@ -1198,6 +1391,13 @@ function loop() {
   draw_Best();
   draw_Flux();
   draw_Class();
+  /* Inline section demos */
+  if (tick_model_demo) tick_model_demo();
+  if (tick_pair_demo)  tick_pair_demo();
+  /* Refresh inline cross-range 2D PSF (waveform may have changed) */
+  /* draw_grayscale is recomputed by refresh_az_demos each frame would be
+   * wasteful; the only time it really needs updating is on waveform
+   * change.  Skip per-frame refresh. */
   requestAnimationFrame(loop);
 }
 loop();

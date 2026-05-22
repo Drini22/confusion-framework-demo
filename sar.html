@@ -49,43 +49,72 @@
 <main class="prose-page">
 
   <section>
-    <h2>The SAR signal model</h2>
+    <h2>The model</h2>
     <p>
-      A radar platform moves along the along-track $x$-axis at altitude
-      $H$, transmitting pulses of waveform $s(t)$ at intervals.  Each
-      ground target $i$ at slant-range $r_i$ and cross-range $x_i$
-      produces a return that, after demodulation, depends on the
-      instantaneous two-way range
-    </p>
-    $$ R_i(x_p) \;=\; \sqrt{r_i^2 + (x_p - x_i)^2}
-        \;\approx\; r_i \;+\; \frac{(x_p - x_i)^2}{2\,r_i}, $$
-    <p>
-      with $x_p$ the platform's slow-time position.  For $n$ targets:
+      A SAR platform moves along the along-track $x$-axis at altitude
+      $H$, transmitting pulses of waveform $s(t)$.  Each ground target
+      $i$ at slant range $r_i$ and cross-range $x_i$ produces a return
+      that depends on the instantaneous two-way range
+      $R_i(x_p) = \sqrt{r_i^2 + (x_p - x_i)^2}
+      \approx r_i + (x_p - x_i)^2 / (2\,r_i)$.  For $n$ targets:
     </p>
     $$ y(t, x_p) \;=\; \sum_i \alpha_i\, s\!\bigl(t - 2 R_i(x_p)/c\bigr)\,
         e^{-j 4\pi R_i(x_p) / \lambda} \;+\; n(t, x_p), $$
     <p>
       with $\alpha_i \geq 0$ the (intensity-equivalent) reflectivity and
       $n$ additive Gaussian receiver noise.  Two-step matched filtering
-      — range compression along fast time, then azimuth compression
-      along slow time — collapses each return to a separable 2D impulse
-      response in the image plane $(r, x)$:
+      — range compression on fast time, then azimuth compression on
+      slow time — collapses each return to a separable 2D impulse
+      response on the image plane $(r, x)$:
     </p>
     $$ \mu_P(r, x) \;\approx\; \sum_i \alpha_i\,
         h_r(r - r_i)\, h_x(x - x_i), \qquad
         U_{p_i}(r, x) \;:=\; h_r(r - r_i)\, h_x(x - x_i). $$
     <p>
-      This is exactly the framework's
-      $\mu_P = \sum F_i\, U_{p_i}$ with $F_i = \alpha_i$ and the SAR
-      impulse response $U_{p}$ in place of the optical PSF.  Everything
-      downstream — cost $J$, $Q^\star$, three contamination conditions,
-      sign test $\bar{\mathcal{D}}$, resolution $\delta_1$ — is
-      unchanged.
+      This is exactly the framework's $\mu_P = \sum F_i\, U_{p_i}$ with
+      $F_i = \alpha_i$ and the SAR impulse response $U_p$ in place of
+      the optical PSF — so cost $J$, $Q^\star$, $\bar{\mathcal{D}}$
+      and $\delta_1$ all carry over.
     </p>
+
+    <!-- Inline mini-demo: drag two targets, see μ_P + noisy SAR image -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-model-fov"></canvas>
+          <div class="mini-demo-plot-label">Image plane &middot; drag $p_1$, $p_2$ (cells)</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-model-clean"></canvas>
+          <div class="mini-demo-plot-label">Clean $\mu_P$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-model-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="sar-model-new-noise" class="micro-btn" title="Draw a new random noise realisation">↻ new sample</button>
+          </div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$\alpha_1$
+          <input type="range" id="sar-model-A1" min="0.05" max="2" step="0.01" value="1">
+          <span class="val" id="sar-model-A1-val">1.00</span>
+        </label>
+        <label>$\alpha_2$
+          <input type="range" id="sar-model-A2" min="0.05" max="2" step="0.01" value="1">
+          <span class="val" id="sar-model-A2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="sar-model-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="sar-model-sigma-val">0.100</span>
+        </label>
+      </div>
+    </div>
   </section>
 
   <section>
-    <h2>The range axis: waveform $\to$ range PSF</h2>
+    <h2>The range axis</h2>
     <p>
       The range PSF $h_r$ is the autocorrelation of the transmit
       waveform.  For a rectangular pulse of duration $T$ (bandwidth
@@ -133,7 +162,7 @@
   </section>
 
   <section>
-    <h2>The cross-range axis: the synthetic aperture</h2>
+    <h2>The cross-range axis</h2>
     <p>
       For a target at slant range $r_0$, the platform's along-track
       motion across an integration interval of length $L_{\rm syn}$
@@ -152,7 +181,7 @@
       $\delta_x \approx 12$&nbsp;cm — orders of magnitude better than
       any real antenna of comparable size.
     </p>
-    <!-- Inline mini-demo: aperture length → cross-range PSF -->
+    <!-- Inline mini-demo: aperture length → cross-range PSF + 2D U_p -->
     <div class="mini-demo">
       <div class="mini-demo-plots">
         <div class="mini-demo-plot">
@@ -162,6 +191,10 @@
         <div class="mini-demo-plot">
           <canvas id="sar-az-psf"></canvas>
           <div class="mini-demo-plot-label">Cross-range PSF $h_x(x)$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-az-2dpsf"></canvas>
+          <div class="mini-demo-plot-label">2D PSF $U_p(r, x) = h_r \cdot h_x$</div>
         </div>
       </div>
       <div class="mini-demo-controls">
@@ -174,37 +207,54 @@
   </section>
 
   <section>
-    <h2>The 2D SAR impulse response</h2>
-    <p>
-      In the separable approximation (valid for short, non-squinted
-      apertures with negligible range-cell migration),
-    </p>
-    $$ U_p(r, x) \;\approx\; h_r(r - r_0)\, h_x(x - x_0). $$
-    <p>
-      The framework's PSF dictionary is the family of
-      shifted copies $\{U_p\}_{p \in (\text{range}, \text{cross-range})}$.
-      Normalize positions by the natural resolution cells,
-      $\tilde r = r / \delta_r$ and $\tilde x = x / \delta_x$, so each
-      principal axis of $U_p$ has unit width and $\delta_1$ comes out as
-      a dimensionless number.
-    </p>
-  </section>
-
-  <section>
-    <h2>Two targets — and when they merge</h2>
+    <h2>Two-target confusion</h2>
     <p>
       For two equal-flux targets at $(\tilde r_1, \tilde x_1)$ and
-      $(\tilde r_2, \tilde x_2)$, the mean image is
-      $\mu_P = U_{p_1} + U_{p_2}$.  As the separation shrinks below
-      the joint resolution cell, the matched-filter $Q^\star$ ceases to
-      tell them apart — the contamination criterion
-      $\bar{\mathcal{D}} > 0$ activates.
+      $(\tilde r_2, \tilde x_2)$, the mean SAR image is
+      $\mu_P = U_{p_1} + U_{p_2}$ — the superposition of two shifted 2D
+      impulse responses.  As the separation shrinks below the joint
+      resolution cell, the matched-filter $Q^\star$ ceases to tell
+      them apart and the contamination criterion
+      $\bar{\mathcal{D}} > 0$ activates.  This is identical to the
+      optical demo's "two sources blur into one" except the image
+      plane is $(\tilde r, \tilde x)$ instead of
+      $(\theta_x, \theta_y)$.
     </p>
-    <p>
-      This is identical to the optical demo's "two sources blur into
-      one" except the image plane is now $(\tilde r, \tilde x)$ instead
-      of $(\theta_x, \theta_y)$.
-    </p>
+
+    <!-- Inline mini-demo: drag two targets, see merging -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-pair-fov"></canvas>
+          <div class="mini-demo-plot-label">Image plane &middot; drag $p_1$, $p_2$ closer / farther</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-pair-clean"></canvas>
+          <div class="mini-demo-plot-label">Clean $\mu_P$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-pair-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="sar-pair-new-noise" class="micro-btn" title="Draw a new random noise realisation">↻ new sample</button>
+          </div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$\alpha_1$
+          <input type="range" id="sar-pair-A1" min="0.05" max="2" step="0.01" value="0.7">
+          <span class="val" id="sar-pair-A1-val">0.70</span>
+        </label>
+        <label>$\alpha_2$
+          <input type="range" id="sar-pair-A2" min="0.05" max="2" step="0.01" value="1">
+          <span class="val" id="sar-pair-A2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="sar-pair-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="sar-pair-sigma-val">0.100</span>
+        </label>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -239,7 +289,7 @@
   </section>
 
   <section>
-    <h2>$\delta_1$ for SAR — interactive</h2>
+    <h2>$\delta_1$ for SAR</h2>
     <p>
       Drag the two targets in the image plane (top-left), pick a
       waveform from the palette, change the synthetic-aperture length,
