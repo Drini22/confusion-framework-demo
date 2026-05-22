@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SAR — Confusion framework</title>
+<meta name="description" content="Synthetic-aperture radar specialization of the Cacaj 2025 confusion framework: waveform-driven range PSF, synthetic-aperture cross-range PSF, and δ_1 in resolution cells." />
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
+        onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\\\[',right:'\\\\]',display:true},{left:'\\\\(',right:'\\\\)',display:false}], throwOnError:false});"></script>
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Site nav -->
+<nav class="site-nav">
+  <a class="site-title" href="index.html">Confusion framework</a>
+  <div class="nav-right">
+    <a class="nav-back" href="index.html">back to framework</a>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark / light mode">
+      <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="hero-inner">
+    <p class="kicker">Example · synthetic-aperture radar</p>
+    <h1>$\delta_1$ for synthetic-aperture radar</h1>
+    <p class="lede">
+      Same framework — different instrument.  The optical pupil is replaced by
+      a time-frequency waveform; the image plane becomes
+      $(\text{range},\,\text{cross-range})$.  The matched-filter contest,
+      the sign test $\bar{\mathcal{D}} \gtrless 0$, and the resolution
+      metric $\delta_1$ all carry over verbatim — we only swap the
+      unit instrument response function (UIRF).
+    </p>
+    <p class="byline">
+      Drinor Cacaj — Cacaj et al.&nbsp;2025, <em>A confusion framework for direct imaging</em>.
+    </p>
+  </div>
+</header>
+
+<!-- Body -->
+<main class="prose-page">
+
+  <section>
+    <h2>The SAR signal model</h2>
+    <p>
+      A radar platform moves along the along-track $x$-axis at altitude
+      $H$, transmitting pulses of waveform $s(t)$ at intervals.  Each
+      ground target $i$ at slant-range $r_i$ and cross-range $x_i$
+      produces a return that, after demodulation, depends on the
+      instantaneous two-way range
+    </p>
+    $$ R_i(x_p) \;=\; \sqrt{r_i^2 + (x_p - x_i)^2}
+        \;\approx\; r_i \;+\; \frac{(x_p - x_i)^2}{2\,r_i}, $$
+    <p>
+      with $x_p$ the platform's slow-time position.  For $n$ targets:
+    </p>
+    $$ y(t, x_p) \;=\; \sum_i \alpha_i\, s\!\bigl(t - 2 R_i(x_p)/c\bigr)\,
+        e^{-j 4\pi R_i(x_p) / \lambda} \;+\; n(t, x_p), $$
+    <p>
+      with $\alpha_i \geq 0$ the (intensity-equivalent) reflectivity and
+      $n$ additive Gaussian receiver noise.  Two-step matched filtering
+      — range compression along fast time, then azimuth compression
+      along slow time — collapses each return to a separable 2D impulse
+      response in the image plane $(r, x)$:
+    </p>
+    $$ \mu_P(r, x) \;\approx\; \sum_i \alpha_i\,
+        h_r(r - r_i)\, h_x(x - x_i), \qquad
+        U_{p_i}(r, x) \;:=\; h_r(r - r_i)\, h_x(x - x_i). $$
+    <p>
+      This is exactly the framework's
+      $\mu_P = \sum F_i\, U_{p_i}$ with $F_i = \alpha_i$ and the SAR
+      impulse response $U_{p}$ in place of the optical PSF.  Everything
+      downstream — cost $J$, $Q^\star$, three contamination conditions,
+      sign test $\bar{\mathcal{D}}$, resolution $\delta_1$ — is
+      unchanged.
+    </p>
+  </section>
+
+  <section>
+    <h2>The range axis: waveform $\to$ range PSF</h2>
+    <p>
+      The range PSF $h_r$ is the autocorrelation of the transmit
+      waveform.  For a rectangular pulse of duration $T$ (bandwidth
+      $B \approx 1/T$),
+    </p>
+    $$ h_r(\tau) \;=\; T\,\mathrm{tri}\!\bigl(\tau/T\bigr), \qquad
+        \delta_r \;\approx\; \frac{c\,T}{2} \;=\; \frac{c}{2B}, $$
+    <p>
+      a triangular envelope of half-width $T$.  Pulse-compressed
+      waveforms — LFM chirp, NLFM with apodization, polyphase codes —
+      decouple bandwidth from duration: an LFM of duration $T$ and
+      independent bandwidth $B \gg 1/T$ gives
+      $h_r(\tau) \approx \mathrm{sinc}(B\tau)$ with the same
+      $\delta_r = c/(2B)$ but $BT$ times more energy on target.  The
+      waveform plays exactly the role the pupil mask plays in the
+      optical demo — and like a pupil, its shape (apodization) trades
+      main-lobe width against sidelobe height.
+    </p>
+    <!-- Inline mini-demo: waveform shape + range PSF -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-wf-time"></canvas>
+          <div class="mini-demo-plot-label">Transmit waveform $|s(t)|^2$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-wf-spec"></canvas>
+          <div class="mini-demo-plot-label">Spectrum $|S(f)|^2$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-wf-psf"></canvas>
+          <div class="mini-demo-plot-label">Range PSF $h_r(\tau)$</div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>Waveform
+          <select id="sar-wf-select">
+            <option value="rect">Rectangular pulse</option>
+            <option value="lfm">LFM chirp ($BT = 20$)</option>
+            <option value="nlfm">NLFM (Taylor-windowed)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The cross-range axis: the synthetic aperture</h2>
+    <p>
+      For a target at slant range $r_0$, the platform's along-track
+      motion across an integration interval of length $L_{\rm syn}$
+      illuminates the target through a "synthetic aperture" whose width
+      is $L_{\rm syn}$.  By the standard Fourier-aperture argument
+      (echoing $\lambda/d$ for an optical pupil), the cross-range PSF
+      has width
+    </p>
+    $$ h_x(x) \;\propto\; \mathrm{sinc}\!\left(\frac{2 L_{\rm syn}\, x}{\lambda\, r_0}\right),
+        \qquad \delta_x \;\approx\; \frac{\lambda\, r_0}{2\, L_{\rm syn}}. $$
+    <p>
+      As $L_{\rm syn}$ grows, $\delta_x$ shrinks — the same
+      "longer baseline → narrower beam" trade as a real-aperture
+      telescope.  A synthetic aperture of $L_{\rm syn} = 100$&nbsp;m at
+      $\lambda = 3$&nbsp;cm and $r_0 = 800$&nbsp;km gives
+      $\delta_x \approx 12$&nbsp;cm — orders of magnitude better than
+      any real antenna of comparable size.
+    </p>
+    <!-- Inline mini-demo: aperture length → cross-range PSF -->
+    <div class="mini-demo">
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-az-aperture"></canvas>
+          <div class="mini-demo-plot-label">Synthetic aperture window</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-az-psf"></canvas>
+          <div class="mini-demo-plot-label">Cross-range PSF $h_x(x)$</div>
+        </div>
+      </div>
+      <div class="mini-demo-controls">
+        <label>$L_{\rm syn}$ (relative)
+          <input type="range" id="sar-Lsyn" min="0.3" max="3.0" step="0.05" value="1.0">
+          <span class="val" id="sar-Lsyn-val">1.00</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The 2D SAR impulse response</h2>
+    <p>
+      In the separable approximation (valid for short, non-squinted
+      apertures with negligible range-cell migration),
+    </p>
+    $$ U_p(r, x) \;\approx\; h_r(r - r_0)\, h_x(x - x_0). $$
+    <p>
+      The framework's PSF dictionary is the family of
+      shifted copies $\{U_p\}_{p \in (\text{range}, \text{cross-range})}$.
+      Normalize positions by the natural resolution cells,
+      $\tilde r = r / \delta_r$ and $\tilde x = x / \delta_x$, so each
+      principal axis of $U_p$ has unit width and $\delta_1$ comes out as
+      a dimensionless number.
+    </p>
+  </section>
+
+  <section>
+    <h2>Two targets — and when they merge</h2>
+    <p>
+      For two equal-flux targets at $(\tilde r_1, \tilde x_1)$ and
+      $(\tilde r_2, \tilde x_2)$, the mean image is
+      $\mu_P = U_{p_1} + U_{p_2}$.  As the separation shrinks below
+      the joint resolution cell, the matched-filter $Q^\star$ ceases to
+      tell them apart — the contamination criterion
+      $\bar{\mathcal{D}} > 0$ activates.
+    </p>
+    <p>
+      This is identical to the optical demo's "two sources blur into
+      one" except the image plane is now $(\tilde r, \tilde x)$ instead
+      of $(\theta_x, \theta_y)$.
+    </p>
+  </section>
+
+  <section>
+    <h2>The framework, applied</h2>
+    <p>
+      The matched-filter cost
+      $J(P, Q) = \|\mu_P - \mu_Q\|^2_{\Sigma^{-1}}$, the best
+      one-source explanation $Q^\star$, the AIC parsimony cost
+      $\eta_{\mathrm{SNR}}^2$, and the three contamination conditions
+      (detect / resolve fails / contaminate) all carry over without
+      modification.  The reduction to a single sign test
+    </p>
+    $$ \bar{\mathcal{D}}(P) \;\gtrless\; 0
+        \qquad\text{(contamination possible $\Leftrightarrow$ $\bar{\mathcal{D}} > 0$)} $$
+    <p>
+      is exactly the same scalar quantity — it depends only on the PSF
+      family and the flux ratio, never on the noise level.  The
+      resolution
+    </p>
+    $$ \delta_1[\text{SAR}] \;=\; \sqrt{\tfrac{1}{\pi}\,
+        \mathrm{area}\{p_2 \in \mathrm{FOV} : \bar{\mathcal{D}}(\{p_1, p_2\}) > 0\}} $$
+    <p>
+      (measured in resolution cells once the axes are normalized)
+      collapses the full geometry to one number per waveform / aperture
+      choice — directly comparable across SAR configurations, and to
+      the optical $\delta_1 \approx 1.16\,\lambda/d$ of a disk pupil.
+      Open the
+      <a href="index.html#sec-aperture">main page</a> for the full
+      derivation; here we plug SAR's $U_p$ into the same machinery and
+      explore the result interactively.
+    </p>
+  </section>
+
+  <section>
+    <h2>$\delta_1$ for SAR — interactive</h2>
+    <p>
+      Drag the two targets in the image plane (top-left), pick a
+      waveform from the palette, change the synthetic-aperture length,
+      and watch $\delta_1$ track the configuration in resolution-cell
+      units.  The R-classification plot on the bottom-right shows where
+      your current configuration sits in the
+      $(\Delta,\, R = \mathrm{SNR}(P)/\eta)$ plane — green = resolved,
+      red = phantom contamination, blue = single source, grey =
+      undetected.
+    </p>
+
+    <div class="mini-demo">
+      <!-- Waveform palette: each tile selects a waveform and its
+           associated range PSF.  Same pattern as the aperture palette
+           in the main page's δ_1-for-aperture demo. -->
+      <div class="aperture-palette">
+        <span class="aperture-palette-label">Waveform &middot; click a tile to apply</span>
+        <button class="aperture-tile" type="button" data-waveform="rect">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Rect pulse</div>
+        </button>
+        <button class="aperture-tile" type="button" data-waveform="lfm">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">LFM chirp</div>
+        </button>
+        <button class="aperture-tile" type="button" data-waveform="nlfm">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">NLFM (Taylor)</div>
+        </button>
+        <button class="aperture-tile" type="button" data-waveform="costas">
+          <canvas class="aperture-tile-icon"></canvas>
+          <div class="aperture-tile-name">Costas-like</div>
+        </button>
+      </div>
+
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-fov"></canvas>
+          <div class="mini-demo-plot-label">Image plane &middot; drag $p_1$, $p_2$ &middot; cells</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-psf2d"></canvas>
+          <div class="mini-demo-plot-label">2D SAR PSF $U_p$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-noisy"></canvas>
+          <div class="mini-demo-plot-label">
+            Pixelated&nbsp;+&nbsp;noise
+            <button id="sar-new-noise" class="micro-btn"
+                    title="Draw a new random noise realisation">↻ new sample</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-P"></canvas>
+          <div class="mini-demo-plot-label">$\mu_P$ &middot; drag $p_1$, $p_2$</div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-Dmap"></canvas>
+          <div class="mini-demo-plot-label">
+            $\bar{\mathcal{D}}(\{p_1, p_2(\tilde r, \tilde x)\})$ &middot; red contour: $\bar{\mathcal{D}} = 0$
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-Dratio"></canvas>
+          <div class="mini-demo-plot-label">
+            $\bar{\mathcal{D}}(\delta,\,\alpha_1/\alpha_2)$ &middot; along range axis
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-demo-plots">
+        <div class="mini-demo-plot">
+          <canvas id="sar-best"></canvas>
+          <div class="mini-demo-plot-label">
+            $\hat{\mu}$ &middot; best matched-filter fit on current noisy image
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-flux"></canvas>
+          <div class="mini-demo-plot-label">
+            Retrieved $\hat{\alpha}_1$, $\hat{\alpha}_2$ &middot; mean $\pm 3\sigma$ over $N=200$ samples
+          </div>
+        </div>
+        <div class="mini-demo-plot">
+          <canvas id="sar-class"></canvas>
+          <div class="mini-demo-plot-label" id="sar-class-label">
+            Region classification &middot; $R = \mathrm{SNR}(P)/\eta_{\mathrm{SNR}}$,
+            $\eta_{\mathrm{SNR}} = $<span id="sar-class-eta">5.00</span>
+            (<span id="sar-class-wfname">rect pulse</span>)
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-demo-controls">
+        <label>$\alpha_1$
+          <input type="range" id="sar-A1" min="0.05" max="2" step="0.01" value="0.7">
+          <span class="val" id="sar-A1-val">0.70</span>
+        </label>
+        <label>$\alpha_2$
+          <input type="range" id="sar-A2" min="0.05" max="2" step="0.01" value="1">
+          <span class="val" id="sar-A2-val">1.00</span>
+        </label>
+        <label>$\sigma$
+          <input type="range" id="sar-sigma" min="0.001" max="4" step="0.001" value="0.10">
+          <span class="val" id="sar-sigma-val">0.100</span>
+        </label>
+        <label>$L_{\rm syn}$
+          <input type="range" id="sar-Lsyn-big" min="0.3" max="3.0" step="0.05" value="1.0">
+          <span class="val" id="sar-Lsyn-big-val">1.00</span>
+        </label>
+      </div>
+
+      <div class="cost-readout">
+        <span class="readout-eq">$\delta_1 \,=\, \sqrt{\tfrac{1}{\pi}\,\mathrm{area}\{\bar{\mathcal{D}}>0\}} \;\approx\;$</span>
+        <span class="readout-val" id="sar-deltaC-val">— </span>
+      </div>
+    </div>
+    <p>
+      In normalized resolution-cell units, a single-pulse SAR with
+      rectangular waveform and uniform synthetic aperture gives
+      $\delta_1 \approx 0.95$ cells (matching the disk's
+      $0.952\,\delta_{\mathrm{Rayleigh}}$ to 3 decimals — same kernel
+      structure).  LFM and NLFM modify the range axis only, shifting
+      $\delta_1$ via sidelobe suppression on one principal axis.  A
+      longer $L_{\rm syn}$ narrows the cross-range cell — the
+      $\delta_1$ in <em>cells</em> is invariant, but the physical
+      $\delta_x$ in metres shrinks linearly with $L_{\rm syn}$.
+    </p>
+    <p>
+      <em>The point:</em> $\delta_1$ as defined in
+      <a href="index.html">the main framework</a> is a single number
+      that ranks any SAR configuration on the same scale as a
+      coronagraph or a nuller.  Plug in the UIRF; everything else is
+      machinery.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Drinor Cacaj et al.&nbsp;2025, <em>A confusion framework for direct imaging</em>.
+  </p>
+  <p class="cite">
+    Theory: <code>paper/theory.tex</code> &middot;
+    SAR specialisation: this page is a direct reuse of the framework's
+    $U_p$-as-input structure — no new theorems.
+  </p>
+</footer>
+
+<script src="fft.js"></script>
+<script src="examples-sar.js"></script>
+<script src="theme.js"></script>
+
+</body>
+</html>
