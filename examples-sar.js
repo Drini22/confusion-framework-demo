@@ -768,6 +768,37 @@ function compute_Dbar(p1r, p1x, p2r, p2x, F1, F2) {
 /* ---- D-bar map ---- */
 const Dmap = new Float64Array(N_DGRID * N_DGRID);
 let dmapDirty = true;
+let mcDirty   = true;     /* MC error-bar cache invalidated on slider / drag */
+
+/* Cached MC retrieval stats (computed by refresh_mc, read by draw_Flux). */
+const McCache = {
+  m1: 0, std1: 0, m2: 0, std2: 0,
+};
+const N_MC = 200;
+function refresh_mc() {
+  if (!mcDirty) return;
+  if (S.sigma <= 0) {
+    McCache.m1 = S.A1; McCache.std1 = 0;
+    McCache.m2 = S.A2; McCache.std2 = 0;
+    mcDirty = false;
+    return;
+  }
+  let s1 = 0, s12 = 0, s2 = 0, s22 = 0;
+  const tmp = new Float64Array(PI_PIX * PI_PIX);
+  for (let s = 0; s < N_MC; s++) {
+    for (let p = 0; p < tmp.length; p++) tmp[p] = gauss_rng();
+    fill_y(tmp);
+    const f1 = fit_1source(S.P1r, S.P1x, yBuf);
+    const f2 = fit_1source(S.P2r, S.P2x, yBuf);
+    s1 += f1.F; s12 += f1.F * f1.F;
+    s2 += f2.F; s22 += f2.F * f2.F;
+  }
+  McCache.m1   = s1 / N_MC;
+  McCache.std1 = Math.sqrt(Math.max(s12 / N_MC - McCache.m1 * McCache.m1, 0));
+  McCache.m2   = s2 / N_MC;
+  McCache.std2 = Math.sqrt(Math.max(s22 / N_MC - McCache.m2 * McCache.m2, 0));
+  mcDirty = false;
+}
 function compute_Dmap() {
   const F1 = S.A1, F2 = S.A2;
   const p1r = S.P1r, p1x = S.P1x;
@@ -875,6 +906,12 @@ function attachMouse(canvas, name) {
 [cv.fov, cv.P, cv.Dmap, cv.Dratio, cv.class].forEach((c, i) => {
   if (c) attachMouse(c, ['fov','P','Dmap','Dratio','class'][i]);
 });
+/* Global safety net: if the user releases the mouse outside any canvas
+ * (or off-window), the per-canvas mouseup handlers never fire and drag
+ * state stays stuck.  Catch that at the window level. */
+window.addEventListener('mouseup', () => {
+  pressed = false; held = false; dragSrc = null;
+});
 
 /* ---- Drawing helpers --------------------------------------------------- */
 function draw_grayscale(canvas, buf, side, peak) {
@@ -935,7 +972,7 @@ function drag_source_circle(canvas, geom, srcManim, srcKey, color) {
       const newX = FOV - (my - y0)/sz * 2*FOV;
       S[srcKey + 'r'] = Math.max(-FOV, Math.min(FOV, newR));
       S[srcKey + 'x'] = Math.max(-FOV, Math.min(FOV, newX));
-      dmapDirty = true;
+      dmapDirty = true; mcDirty = true;
       canvas.style.cursor = 'move';
     } else if (near) {
       canvas.style.cursor = 'move';
@@ -1105,13 +1142,83 @@ function draw_Dratio() {
     }
   }
   ctx.putImageData(img, px, py);
-  ctx.strokeStyle = getCSSColor('--border'); ctx.strokeRect(px, py, pw, ph);
+  /* Switch to CSS coordinates for the yellow dot + drag handling. */
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cssPx = padL, cssPy = padT;
+  const cssPw = cssW - padL - padR, cssPh = cssH - padT - padB;
+
+  /* Yellow dot at current (Δ, ratio); draggable. */
+  const dNow  = Math.hypot(S.P2r - S.P1r, S.P2x - S.P1x);
+  const ratio = Math.min(S.A1, S.A2) / Math.max(S.A1, S.A2);
+  const cxd = cssPx + Math.max(0, Math.min(1, dNow / DELTA_MAX)) * cssPw;
+  const cyd = cssPy + (1 - ratio) * cssPh;
+
+  const mpcp = cv.Dratio._mp;
+  let nearD = false;
+  if (mpcp) {
+    const d2 = (mpcp.x - cxd)**2 + (mpcp.y - cyd)**2;
+    nearD = d2 < 144;
+  }
+  const rOuter = (dragSrc === 'DRATIO' || nearD) ? 10 : 8;
+  const rInner = (dragSrc === 'DRATIO' || nearD) ? 6 : 5;
+  ctx.fillStyle   = 'rgb(245, 200, 70)';
+  ctx.strokeStyle = 'rgb(245, 200, 70)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cxd, cyd, rInner, 0, 2*Math.PI); ctx.fill();
+  ctx.beginPath(); ctx.arc(cxd, cyd, rOuter, 0, 2*Math.PI); ctx.stroke();
+
+  /* Drag start */
+  if (mpcp && pressed && !dragSrc && nearD) dragSrc = 'DRATIO';
+
+  /* Drag updates: x → Δ (rescale p1,p2 about midpoint); y → ratio (rescale α1,α2). */
+  if (mpcp && held && dragSrc === 'DRATIO') {
+    const mx = Math.max(cssPx, Math.min(cssPx + cssPw, mpcp.x));
+    const my = Math.max(cssPy, Math.min(cssPy + cssPh, mpcp.y));
+    const newDelta = (mx - cssPx) / cssPw * DELTA_MAX;
+    let newRatio = 1 - (my - cssPy) / cssPh;
+    newRatio = Math.max(0.001, Math.min(1, newRatio));
+
+    /* Rescale p1, p2 symmetrically about midpoint. */
+    const drp = S.P2r - S.P1r, dxp = S.P2x - S.P1x;
+    const len = Math.hypot(drp, dxp);
+    let ur = 1, ux = 0;
+    if (len > 1e-9) { ur = drp / len; ux = dxp / len; }
+    const cxm = 0.5 * (S.P1r + S.P2r);
+    const cym = 0.5 * (S.P1x + S.P2x);
+    S.P1r = Math.max(-FOV, Math.min(FOV, cxm - 0.5 * newDelta * ur));
+    S.P1x = Math.max(-FOV, Math.min(FOV, cym - 0.5 * newDelta * ux));
+    S.P2r = Math.max(-FOV, Math.min(FOV, cxm + 0.5 * newDelta * ur));
+    S.P2x = Math.max(-FOV, Math.min(FOV, cym + 0.5 * newDelta * ux));
+
+    /* Solve for α1, α2 preserving ‖α‖². */
+    const Rnorm = Math.sqrt(S.A1*S.A1 + S.A2*S.A2);
+    const Amax  = Rnorm / Math.sqrt(1 + newRatio * newRatio);
+    const Amin  = Amax * newRatio;
+    const cl = a => Math.max(0.05, Math.min(2, a));
+    if (S.A1 >= S.A2) { S.A1 = cl(Amax); S.A2 = cl(Amin); }
+    else              { S.A1 = cl(Amin); S.A2 = cl(Amax); }
+
+    /* Sync sliders. */
+    const sl1 = document.getElementById('sar-A1'), lb1 = document.getElementById('sar-A1-val');
+    const sl2 = document.getElementById('sar-A2'), lb2 = document.getElementById('sar-A2-val');
+    if (sl1) sl1.value = S.A1;
+    if (lb1) lb1.textContent = S.A1.toFixed(2);
+    if (sl2) sl2.value = S.A2;
+    if (lb2) lb2.textContent = S.A2.toFixed(2);
+
+    dmapDirty = true; dratioDirty = true; mcDirty = true;
+  }
+
+  cv.Dratio.style.cursor = (nearD || dragSrc === 'DRATIO') ? 'move' : 'default';
+
+  /* Frame + axis labels (CSS coords). */
+  ctx.strokeStyle = getCSSColor('--border'); ctx.strokeRect(cssPx, cssPy, cssPw, cssPh);
   ctx.fillStyle = getCSSColor('--text-soft');
   ctx.font = '10px monospace';
-  ctx.fillText('0', px - 4, py + ph + 14);
-  ctx.fillText(DELTA_MAX.toFixed(1), px + pw - 16, py + ph + 14);
-  ctx.fillText('1.0', 6, py + 8);
-  ctx.fillText('0.0', 6, py + ph - 2);
+  ctx.fillText('0', cssPx - 4, cssPy + cssPh + 14);
+  ctx.fillText(DELTA_MAX.toFixed(1), cssPx + cssPw - 16, cssPy + cssPh + 14);
+  ctx.fillText('1.0', 6, cssPy + 8);
+  ctx.fillText('0.0', 6, cssPy + cssPh - 2);
 }
 
 function draw_Best() {
@@ -1197,23 +1304,10 @@ function draw_Flux() {
   }
   actualBox(x1, S.A1, 'rgb(220, 80, 80)');
   actualBox(x2, S.A2, 'rgb(80, 130, 220)');
-  /* Quick MC: 100 noise samples, estimate fit stds. */
+  /* Read the cached MC stats (computed by refresh_mc on mcDirty). */
   if (S.sigma > 0) {
-    const N = 100;
-    let s1=0, s12=0, s2=0, s22=0;
-    const tmp = new Float64Array(PI_PIX * PI_PIX);
-    for (let s = 0; s < N; s++) {
-      for (let p = 0; p < tmp.length; p++) tmp[p] = gauss_rng();
-      fill_y(tmp);
-      const f1 = fit_1source(S.P1r, S.P1x, yBuf);
-      const f2 = fit_1source(S.P2r, S.P2x, yBuf);
-      s1 += f1.F; s12 += f1.F*f1.F;
-      s2 += f2.F; s22 += f2.F*f2.F;
-    }
-    const m1 = s1/N, std1 = Math.sqrt(Math.max(s12/N - m1*m1, 0));
-    const m2 = s2/N, std2 = Math.sqrt(Math.max(s22/N - m2*m2, 0));
-    bar(x1 + 14, m1, std1, 'rgb(220, 80, 80)');
-    bar(x2 + 14, m2, std2, 'rgb(80, 130, 220)');
+    bar(x1 + 14, McCache.m1, McCache.std1, 'rgb(220, 80, 80)');
+    bar(x2 + 14, McCache.m2, McCache.std2, 'rgb(80, 130, 220)');
   }
   ctx.strokeStyle = getCSSColor('--border'); ctx.strokeRect(px, py, pw, ph);
   ctx.fillStyle = getCSSColor('--text-soft'); ctx.font = '10px monospace';
@@ -1263,22 +1357,72 @@ function draw_Class() {
     ctx.fillStyle = colGreen; ctx.fillRect(yp, py, 1, yr - py);
   }
   ctx.strokeStyle = getCSSColor('--border'); ctx.strokeRect(px, py, pw, ph);
-  /* yellow dot at current config */
+  /* yellow dot at current config — draggable (changes Δ + σ via R) */
   const Delta_now = Math.hypot(S.P2r - S.P1r, S.P2x - S.P1x);
   const k_now = k_at(S.P2r - S.P1r, S.P2x - S.P1x);
   const muPsq = S.A1*S.A1 + S.A2*S.A2 + 2*S.A1*S.A2*k_now;
   const dx_pix = 2*FOV/PI_PIX;
   const safeSig = Math.max(S.sigma * dx_pix, 1e-9);
   const R_now = Math.sqrt(muPsq) / (safeSig * etaVal);
+
+  let xc = -1, yc = -1, near = false;
   if (Delta_now <= DELTA_MAX) {
-    const xc = px + Delta_now/DELTA_MAX * pw;
-    const yc = R2y(Math.max(0.4, Math.min(100, R_now)));
-    ctx.fillStyle = 'rgb(245, 200, 70)';
-    ctx.beginPath(); ctx.arc(xc, yc, 5, 0, 2*Math.PI); ctx.fill();
+    xc = px + Delta_now/DELTA_MAX * pw;
+    yc = R2y(Math.max(0.4, Math.min(100, R_now)));
+    const mp = cv.class._mp;
+    if (mp) {
+      const d2 = (mp.x - xc)**2 + (mp.y - yc)**2;
+      near = d2 < 144;
+    }
+    const rOuter = (dragSrc === 'CLASS' || near) ? 10 : 8;
+    const rInner = (dragSrc === 'CLASS' || near) ? 6 : 5;
+    ctx.fillStyle   = 'rgb(245, 200, 70)';
     ctx.strokeStyle = 'rgb(245, 200, 70)';
     ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(xc, yc, 8, 0, 2*Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(xc, yc, rInner, 0, 2*Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.arc(xc, yc, rOuter, 0, 2*Math.PI); ctx.stroke();
   }
+
+  /* Drag start */
+  const mpcp = cv.class._mp;
+  if (mpcp && pressed && !dragSrc && near) dragSrc = 'CLASS';
+
+  /* Drag updates: new x → Δ, new y → R → solve for σ. */
+  if (mpcp && held && dragSrc === 'CLASS') {
+    const mx = Math.max(px, Math.min(px + pw, mpcp.x));
+    const my = Math.max(py, Math.min(py + ph, mpcp.y));
+    const newDelta = (mx - px) / pw * DELTA_MAX;
+    const newLr    = (py + ph - my) / ph * (lr_max - lr_min) + lr_min;
+    const newR     = Math.pow(10, newLr);
+
+    /* Rescale (p1, p2) symmetrically about midpoint. */
+    const dxp = S.P2r - S.P1r, dyp = S.P2x - S.P1x;
+    const len = Math.hypot(dxp, dyp);
+    let ux = 1, uy = 0;
+    if (len > 1e-9) { ux = dxp / len; uy = dyp / len; }
+    const cxm = 0.5 * (S.P1r + S.P2r);
+    const cym = 0.5 * (S.P1x + S.P2x);
+    S.P1r = Math.max(-FOV, Math.min(FOV, cxm - 0.5 * newDelta * ux));
+    S.P1x = Math.max(-FOV, Math.min(FOV, cym - 0.5 * newDelta * uy));
+    S.P2r = Math.max(-FOV, Math.min(FOV, cxm + 0.5 * newDelta * ux));
+    S.P2x = Math.max(-FOV, Math.min(FOV, cym + 0.5 * newDelta * uy));
+
+    /* Solve for σ given target R. */
+    const new_kernel = k_at(S.P2r - S.P1r, S.P2x - S.P1x);
+    const muPsq_new = S.A1*S.A1 + S.A2*S.A2 + 2*S.A1*S.A2*new_kernel;
+    let new_sigma = Math.sqrt(muPsq_new) / (Math.max(newR, 1e-6) * etaVal * dx_pix);
+    new_sigma = Math.max(0.001, Math.min(4.0, new_sigma));
+    S.sigma = new_sigma;
+
+    /* Sync sliders + labels. */
+    const sigSlider = document.getElementById('sar-sigma');
+    const sigLabel  = document.getElementById('sar-sigma-val');
+    if (sigSlider) sigSlider.value = S.sigma;
+    if (sigLabel)  sigLabel.textContent = S.sigma.toFixed(3);
+    dmapDirty = true; dratioDirty = true; mcDirty = true;
+  }
+
+  cv.class.style.cursor = (near || dragSrc === 'CLASS') ? 'move' : 'default';
   /* axis labels */
   ctx.fillStyle = getCSSColor('--text-soft');
   ctx.font = '10px monospace';
@@ -1357,7 +1501,10 @@ function bindSlider(id, valId, key, decimals = 2, after = null) {
   slider.addEventListener('input', () => {
     S[key] = parseFloat(slider.value);
     if (valEl) valEl.textContent = S[key].toFixed(decimals);
-    dmapDirty = true; dratioDirty = true;
+    /* Position-dependent: dmap + dratio invalidated.
+     * Flux- or noise-dependent: MC bars invalidated too. */
+    if (key === 'A1' || key === 'A2') { dmapDirty = true; dratioDirty = true; }
+    mcDirty = true;
     if (after) after();
   });
   if (valEl) valEl.textContent = S[key].toFixed(decimals);
@@ -1382,6 +1529,7 @@ function loop() {
     update_dC_readout();
   }
   if (dratioDirty && !held) { build_Dratio(); dratioDirty = false; }
+  if (mcDirty && !held) { refresh_mc(); }      /* MC bars: cached */
   draw_fov();
   draw_psf2d();
   draw_noisy();
