@@ -56,7 +56,6 @@ over `file://`).
 | file | purpose |
 |---|---|
 | `index.html` | main page — all sections + interactive demos |
-| `gaussian-2d.html` | standalone 2-D Gaussian PSF demo with proofs |
 | `style.css` | site theme + per-demo layout |
 | `apertures.js` | pupil masks, FFT-based PSF/autocorrelation tables, per-aperture look-elsewhere $\eta_{\mathrm{SNR}}$, rotation hooks |
 | `fft.js` | tiny 2D Cooley–Tukey FFT (no external deps) |
